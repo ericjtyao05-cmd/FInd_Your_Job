@@ -1,0 +1,2 @@
+[console_scripts]
+find-your-job = find_your_job.cli:main

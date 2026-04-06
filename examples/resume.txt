@@ -1,0 +1,7 @@
+Alex Chen
+Backend-focused software engineer with 5 years of experience shipping APIs, cloud services, and operational improvements.
+
+Experience
+- Improved API latency by 43% with service redesign and caching.
+- Led cloud deployment modernization across multiple services.
+- Built internal tooling for data flows and backend observability.
