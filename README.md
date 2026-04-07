@@ -1,6 +1,14 @@
 # Find Your Job
 
-`Find Your Job` is a Python MVP for a multi-agent job matching workflow. It implements the five agents you asked for:
+`Find Your Job` is now scaffolded as a deployable multi-service platform:
+
+- Frontend on Vercel: `apps/web`
+- Backend API on Railway: `apps/api`
+- Agent worker on a worker process: `apps/worker`
+- Database on Supabase: `supabase/migrations`
+- Shared Python agent logic: `src/find_your_job`
+
+The platform still implements the five agents:
 
 1. `ResearchAgent`
 2. `FitScoringAgent`
@@ -8,97 +16,138 @@
 4. `BrowserExecutorAgent`
 5. `ReviewGateAgent`
 
-## What It Does
-
-- Searches from a provided job list, deduplicates repeated postings, and categorizes them.
-- Scores each role against a candidate profile, explains the reasoning, and highlights skill gaps.
-- Drafts resume edits, a cover letter, and interview/application Q&A prompts for top matches.
-- Prepares browser application runs and records screenshots plus mistakes.
-- Blocks or flags risky applications and requires explicit user confirmation before final submission.
-
-## Project Structure
+## Architecture
 
 ```text
+apps/
+  api/       FastAPI service for Vercel frontend consumption, persisted via Supabase
+  web/       Next.js app for Vercel
+  worker/    Queue-polling worker that executes the agent workflow
 src/find_your_job/
-  agents/
-  browser_adapters.py
-  cli.py
-  models.py
-  orchestrator.py
-  sample_data.py
-examples/
-  resume.txt
+  agents/    Shared research, scoring, writing, browser, and review logic
+supabase/
+  migrations/ Database schema for candidates, workflow runs, jobs, events, and artifacts
 ```
 
-## Run
+## Deployment Split
 
-Use the built-in demo data:
+### Vercel Frontend
+
+The frontend in `apps/web` is a Next.js app that:
+
+- collects candidate inputs
+- uploads a resume file reference
+- starts workflow runs through the Railway API
+- polls run state and renders jobs, progress, and review outcomes
+
+Set:
+
+```bash
+NEXT_PUBLIC_API_BASE_URL=https://your-railway-api.up.railway.app
+```
+
+Deploy on Vercel:
+
+1. Import this repository into Vercel
+2. Set the project root to `apps/web`
+3. Add the environment variable `NEXT_PUBLIC_API_BASE_URL`
+4. Point it to your Railway API URL, for example `https://your-api.up.railway.app`
+5. Deploy
+
+If `NEXT_PUBLIC_API_BASE_URL` is missing, the frontend now shows a configuration error instead of trying to call `localhost` in production.
+
+### Railway Backend
+
+The backend in `apps/api` is a FastAPI service that:
+
+- creates candidates and workflow runs
+- queues work in Supabase
+- returns run state, events, jobs, applications, and artifacts to the frontend
+
+Run locally:
+
+```bash
+cd apps/api
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8001
+```
+
+### Worker Service
+
+The worker in `apps/worker` polls queued runs from Supabase and executes the shared Python pipeline. It writes:
+
+- workflow events
+- discovered jobs
+- application packages
+- browser artifacts
+
+Run locally:
+
+```bash
+cd apps/worker
+pip install -r requirements.txt
+PYTHONPATH=../../src python main.py
+```
+
+### Supabase
+
+Apply the schema in:
+
+- [001_init.sql](/Users/ericyao/agent_projects/Find_Your_Job/supabase/migrations/001_init.sql)
+
+It creates tables for:
+
+- `candidates`
+- `workflow_runs`
+- `workflow_events`
+- `workflow_jobs`
+- `application_packages`
+- `browser_artifacts`
+
+## Shared Python Workflow
+
+The shared Python workflow remains under `src/find_your_job/` and can still run standalone:
 
 ```bash
 PYTHONPATH=src python -m find_your_job.cli
 ```
 
-If you want the browser executor to mark valid applications as submitted:
+Research-only:
 
 ```bash
-PYTHONPATH=src python -m find_your_job.cli --allow-submit
+PYTHONPATH=src python -m find_your_job.cli --live-research --research-only
 ```
 
-## Web UI
+## Environment
 
-Run the built-in web interface:
+Copy:
 
 ```bash
-PYTHONPATH=src python -m find_your_job.web --port 8000
+.env.example
 ```
 
-Or, after installing the package:
+and provide:
 
-```bash
-find-your-job-web --port 8000
-```
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_ANON_KEY`
+- `OPENAI_API_KEY` if you later add LLM-backed prompts
+- `NEXT_PUBLIC_API_BASE_URL`
 
-Open `http://127.0.0.1:8000`.
+## Current Status
 
-The UI shows:
+What is implemented now:
 
-- live agent step status
-- a feed of progress messages
-- discovered jobs and fit scores
-- review blockers and browser execution outcomes
+- shared Python agent workflow
+- Next.js frontend scaffold for Vercel
+- FastAPI backend scaffold for Railway
+- worker scaffold that consumes queued runs
+- Supabase schema and persistence model
 
-## Notes On The Browser Agent
+What still needs environment-level deployment work:
 
-The browser executor now uses Playwright when the optional dependency is installed. It can:
-
-- Open the target application page
-- Wait for a page marker
-- Fill configured form fields
-- Upload configured files
-- Save screenshots before and after the submit step
-- Return mistakes when selectors or files are missing
-
-Install the browser dependency and browser binaries:
-
-```bash
-pip install -e ".[browser]"
-playwright install
-```
-
-The default sample data still points to placeholder URLs and selectors. For real automation, provide valid `application_url`, `field_selectors`, `upload_selectors`, and `submit_selector` values for each `BrowserTask`.
-
-The project now includes a simple adapter layer in [browser_adapters.py](/Users/ericyao/agent_projects/Find_Your_Job/src/find_your_job/browser_adapters.py) that emits selectors for:
-
-- Greenhouse
-- Lever
-- Workday
-- Generic fallback forms
-
-These adapters are intentionally conservative. They give the browser agent a real starting point, but Workday in particular usually needs company-specific overrides.
-
-## Extension Points
-
-- Replace `sample_data.py` with inputs from a database, job board scraper, or API.
-- Replace deterministic heuristics inside the agents with LLM-backed prompts.
-- Expand `ReviewGateAgent` with policy rules for risky claims, visa status, salary expectations, or compliance checks.
-- Upgrade `BrowserExecutorAgent` to fill real application forms and upload real files with Playwright.
+- install app dependencies in each service
+- set platform environment variables
+- configure Supabase project credentials
+- deploy the three services
+- optionally add Supabase Storage-backed resume upload instead of placeholder file references in the Vercel frontend

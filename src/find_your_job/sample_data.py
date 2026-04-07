@@ -68,4 +68,28 @@ def sample_research_sources() -> list[ResearchSource]:
             company="LinkedIn",
             source_label="LinkedIn",
         ),
+        ResearchSource(
+            kind="lever",
+            token="encord",
+            company="Encord",
+            source_label="Lever",
+            locations=["Remote", "London", "Europe", "Asia", "APAC"],
+            title_keywords=["Software Engineer", "Backend Engineer", "Platform Engineer"],
+        ),
+        ResearchSource(
+            kind="lever",
+            token="zopa",
+            company="Zopa",
+            source_label="Lever",
+            locations=["London", "Remote", "United Kingdom"],
+            title_keywords=["Software Engineer", "Backend Engineer"],
+        ),
+        ResearchSource(
+            kind="greenhouse",
+            token="ebury",
+            company="Ebury",
+            source_label="Greenhouse",
+            locations=["London", "Remote", "Europe", "APAC"],
+            title_keywords=["Software Engineer", "Backend Engineer", "Staff Engineer"],
+        ),
     ]

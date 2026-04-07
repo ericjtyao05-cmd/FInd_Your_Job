@@ -1,4 +1,0 @@
-Application URL: https://apply.example.com/job-003
-Fields prepared: cover_letter, email, name
-Files prepared: resume
-Submit enabled: False

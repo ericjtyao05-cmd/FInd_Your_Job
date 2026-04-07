@@ -4,12 +4,61 @@ import json
 from html import unescape
 import re
 from collections import defaultdict
-from urllib.parse import quote_plus
 from urllib.error import HTTPError, URLError
+from urllib.parse import quote_plus
 from urllib.request import urlopen
 
 from .base import Agent, AgentResult
 from find_your_job.models import CandidateProfile, JobCategory, JobPosting, ResearchResult, ResearchSource
+
+
+TITLE_SYNONYMS: dict[str, list[str]] = {
+    "software engineer": [
+        "software developer",
+        "application engineer",
+        "software engineer",
+        "software developer",
+        "软件工程师",
+    ],
+    "backend engineer": [
+        "backend developer",
+        "backend software engineer",
+        "platform engineer",
+        "server-side engineer",
+        "后端工程师",
+        "后端开发",
+    ],
+    "frontend engineer": [
+        "frontend developer",
+        "ui engineer",
+        "web engineer",
+        "前端工程师",
+    ],
+    "data engineer": [
+        "analytics engineer",
+        "etl engineer",
+        "big data engineer",
+        "数据工程师",
+    ],
+    "product manager": [
+        "product owner",
+        "product lead",
+        "产品经理",
+    ],
+}
+
+LOCATION_ALIASES: dict[str, list[str]] = {
+    "london": ["london", "greater london", "united kingdom", "uk", "england", "remote uk", "emea"],
+    "berlin": ["berlin", "germany", "deutschland", "remote germany", "emea"],
+    "new york": ["new york", "nyc", "new york city", "united states", "usa", "us", "remote us", "north america"],
+    "san francisco": ["san francisco", "bay area", "sf", "california", "united states", "usa", "us", "remote us", "north america"],
+    "shanghai": ["shanghai", "上海", "pudong", "china", "中国", "apac", "asia", "remote china"],
+    "beijing": ["beijing", "北京", "china", "中国", "apac", "asia", "remote china"],
+    "singapore": ["singapore", "sg", "apac", "asia", "remote singapore"],
+    "tokyo": ["tokyo", "東京", "japan", "日本", "apac", "asia"],
+    "hong kong": ["hong kong", "香港", "apac", "asia"],
+    "remote": ["remote", "worldwide", "global", "distributed", "hybrid"],
+}
 
 
 class ResearchAgent(Agent):
@@ -107,16 +156,17 @@ class ResearchAgent(Agent):
         source: ResearchSource,
         candidate: CandidateProfile | None,
     ) -> list[JobPosting]:
-        if not candidate or not candidate.target_titles:
+        search_titles = self._expanded_titles(candidate, source)[:8]
+        search_locations = self._expanded_locations(candidate, source)[:8] or [""]
+        if not search_titles:
             return []
 
-        locations = candidate.preferred_locations or [""]
         jobs: list[JobPosting] = []
         seen_ids: set[str] = set()
-        max_results = 12
+        max_results = 24
 
-        for title in candidate.target_titles[:4]:
-            for location in locations[:4]:
+        for title in search_titles:
+            for location in search_locations:
                 search_url = (
                     "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
                     f"?keywords={quote_plus(title)}&location={quote_plus(location)}&start=0"
@@ -174,25 +224,74 @@ class ResearchAgent(Agent):
         candidate: CandidateProfile | None,
         source: ResearchSource,
     ) -> bool:
-        title_text = job.title.lower()
-        location_text = job.location.lower()
-        title_keywords = [item.lower() for item in source.title_keywords]
-        source_location_keywords = [item.lower() for item in source.locations]
+        title_text = self._normalize(job.title)
+        location_text = self._normalize(job.location)
+        title_keywords = self._expanded_titles(candidate, source)
+        location_keywords = self._expanded_locations(candidate, source)
 
-        if candidate:
-            title_keywords.extend(title.lower() for title in candidate.target_titles)
-            candidate_location_keywords = [
-                location.lower() for location in candidate.preferred_locations if location.strip()
-            ]
-        else:
-            candidate_location_keywords = []
-
-        title_keywords = [keyword for keyword in title_keywords if keyword]
-        location_keywords = candidate_location_keywords or [keyword for keyword in source_location_keywords if keyword]
-
-        title_ok = True if not title_keywords else any(keyword in title_text for keyword in title_keywords)
-        location_ok = True if not location_keywords else any(keyword in location_text for keyword in location_keywords)
+        title_ok = True if not title_keywords else any(self._normalize(keyword) in title_text for keyword in title_keywords)
+        location_ok = True if not location_keywords else any(self._normalize(keyword) in location_text for keyword in location_keywords)
         return title_ok and location_ok
+
+    def _expanded_titles(
+        self,
+        candidate: CandidateProfile | None,
+        source: ResearchSource,
+    ) -> list[str]:
+        raw_titles: list[str] = []
+        raw_titles.extend(source.title_keywords)
+        if candidate:
+            raw_titles.extend(candidate.target_titles)
+
+        expanded: list[str] = []
+        for title in raw_titles:
+            normalized = self._normalize(title)
+            if not normalized:
+                continue
+            expanded.append(title.strip())
+            for root, variants in TITLE_SYNONYMS.items():
+                if root in normalized:
+                    expanded.extend(variants)
+                elif any(variant in normalized for variant in variants):
+                    expanded.append(root)
+                    expanded.extend(variants)
+
+        return self._unique_preserve(expanded)
+
+    def _expanded_locations(
+        self,
+        candidate: CandidateProfile | None,
+        source: ResearchSource,
+    ) -> list[str]:
+        raw_locations: list[str] = []
+        if candidate and candidate.preferred_locations:
+            raw_locations.extend(candidate.preferred_locations)
+        else:
+            raw_locations.extend(source.locations)
+
+        expanded: list[str] = []
+        for location in raw_locations:
+            normalized = self._normalize(location)
+            if not normalized:
+                continue
+            expanded.append(location.strip())
+            for root, variants in LOCATION_ALIASES.items():
+                if root in normalized or any(variant in normalized for variant in variants):
+                    expanded.append(root)
+                    expanded.extend(variants)
+
+        return self._unique_preserve(expanded)
+
+    def _unique_preserve(self, values: list[str]) -> list[str]:
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for value in values:
+            key = self._normalize(value)
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            ordered.append(value)
+        return ordered
 
     def _load_json(self, url: str) -> object:
         with urlopen(url, timeout=20) as response:

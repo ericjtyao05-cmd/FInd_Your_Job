@@ -7,5 +7,15 @@ __pycache__/
 venv/
 dist/
 build/
+.env
+apps/api/.env
+apps/worker/.env
 artifacts/uploads/
+artifacts/screenshots/
 .claude/
+apps/web/node_modules/
+apps/web/.next/
+apps/web/out/
+apps/web/.vercel/
+apps/api/.venv/
+apps/worker/.venv/

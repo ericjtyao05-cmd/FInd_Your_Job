@@ -20,7 +20,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--live-research",
         action="store_true",
-        help="Fetch live jobs from configured official Greenhouse and Lever boards.",
+        help="Fetch live jobs from the configured live sources, including LinkedIn guest search plus official Lever and Greenhouse boards.",
     )
     parser.add_argument(
         "--research-only",
