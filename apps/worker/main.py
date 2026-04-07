@@ -13,6 +13,7 @@ from config import settings
 from find_your_job.agents import ApplicationWriterAgent, BrowserExecutorAgent, FitScoringAgent, ResearchAgent, ReviewGateAgent
 from find_your_job.browser_adapters import BrowserTaskBuilder
 from find_your_job.models import BrowserExecutionResult, CandidateProfile, ResearchSource
+from find_your_job.sample_data import sample_research_sources
 
 
 def main() -> None:
@@ -74,9 +75,11 @@ def main() -> None:
                     candidate.resume_path = local_resume_path
                     log("log", None, {"message": f"Resume materialized for browser upload: {Path(local_resume_path).name}"})
 
-                research_sources = [ResearchSource(kind="linkedin", token="", company="LinkedIn", source_label="LinkedIn")]
+                research_sources = sample_research_sources()
                 research = ResearchAgent().run(jobs=[], candidate=candidate, sources=research_sources if run["live_research"] else None).payload
                 log("step", "research", {"message": f"Research found {len(research.deduplicated_jobs)} jobs."})
+                if research.source_errors:
+                    log("log", "research", {"message": "Research source errors detected.", "source_errors": research.source_errors})
                 _stdout(f"run {run_id}: research found {len(research.deduplicated_jobs)} jobs")
 
                 fit_scores = FitScoringAgent().run(candidate, research.deduplicated_jobs).payload
