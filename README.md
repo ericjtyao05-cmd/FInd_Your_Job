@@ -72,6 +72,19 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8001
 ```
 
+Deploy on Railway:
+
+1. Create a new Railway service from this repository
+2. Preferred: set the service root directory to `apps/api`
+3. Set these environment variables in Railway:
+   `SUPABASE_URL`
+   `SUPABASE_SERVICE_ROLE_KEY`
+   `SUPABASE_STORAGE_BUCKET`
+4. Start command:
+   `uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}`
+
+If you deploy from the repo root instead of `apps/api`, this repo now includes a root-level [nixpacks.toml](/Users/ericyao/agent_projects/Find_Your_Job/nixpacks.toml) fallback that installs `apps/api/requirements.txt` and starts the API from `apps/api`.
+
 ### Worker Service
 
 The worker in `apps/worker` polls queued runs from Supabase and executes the shared Python pipeline. It writes:
@@ -88,6 +101,22 @@ cd apps/worker
 pip install -r requirements.txt
 PYTHONPATH=../../src python main.py
 ```
+
+Deploy on Railway:
+
+1. Create a new Railway service from this repository
+2. Leave the service root directory empty so the full repo is available during build
+3. Switch the builder to `Dockerfile`
+4. Set the Dockerfile path to:
+   `apps/worker/Dockerfile`
+5. Set these environment variables in Railway:
+   `SUPABASE_URL`
+   `SUPABASE_SERVICE_ROLE_KEY`
+   `SUPABASE_STORAGE_BUCKET`
+   `WORKER_POLL_INTERVAL_SECONDS`
+   `PLAYWRIGHT_HEADLESS`
+
+This is the recommended worker deployment path. The command-based Railway Python builder can fail to install both the worker dependencies and the shared `src/find_your_job` package into the same runtime environment.
 
 ### Supabase
 
