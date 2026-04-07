@@ -15,7 +15,7 @@ def _cors_origins() -> list[str]:
     extras = [value.strip() for value in settings.cors_extra_origins.split(",") if value.strip()]
     return [settings.cors_origin, settings.cors_origin_alt, "http://localhost:3000", "http://127.0.0.1:3000", *extras]
 
-app = FastAPI(title="Find Your Job API", version="0.1.0")
+app = FastAPI(title="Find Your Job API", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins(),

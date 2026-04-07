@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "find-your-job"
-version = "0.1.0"
+version = "1.0.0"
 description = "A multi-agent system for researching jobs, scoring fit, drafting applications, and gating final submissions."
 readme = "README.md"
 requires-python = ">=3.11"
