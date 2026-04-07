@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     supabase_storage_bucket: str = "resumes"
     cors_origin: str = "http://localhost:3000"
     cors_origin_alt: str = "http://127.0.0.1:3000"
+    cors_extra_origins: str = ""
+    cors_origin_regex: str = r"https://.*\.vercel\.app"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

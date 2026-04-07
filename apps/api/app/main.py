@@ -10,10 +10,16 @@ from .config import settings
 from .db import get_supabase
 from .schemas import ResumeUploadResponse, RunCreateRequest, RunCreateResponse, RunDetailResponse
 
+
+def _cors_origins() -> list[str]:
+    extras = [value.strip() for value in settings.cors_extra_origins.split(",") if value.strip()]
+    return [settings.cors_origin, settings.cors_origin_alt, "http://localhost:3000", "http://127.0.0.1:3000", *extras]
+
 app = FastAPI(title="Find Your Job API", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.cors_origin, settings.cors_origin_alt, "http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=_cors_origins(),
+    allow_origin_regex=settings.cors_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
