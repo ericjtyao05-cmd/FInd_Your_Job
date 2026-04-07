@@ -19,3 +19,4 @@ apps/web/out/
 apps/web/.vercel/
 apps/api/.venv/
 apps/worker/.venv/
+apps/worker/artifacts/
