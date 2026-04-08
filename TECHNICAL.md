@@ -101,10 +101,11 @@ Deploy on Railway:
    `WORKER_POLL_INTERVAL_SECONDS`
    `PLAYWRIGHT_HEADLESS`
    `RUN_SECRET_ENCRYPTION_KEY`
-   `OPENAI_API_KEY`
-   `OPENAI_APPLICATION_WRITER_MODEL`
-   `OPENAI_FIT_SCORING_MODEL`
-   `OPENAI_REVIEW_GATE_MODEL`
+   `DEEPSEEK_API_KEY`
+   `DEEPSEEK_BASE_URL`
+   `DEEPSEEK_APPLICATION_WRITER_MODEL`
+   `DEEPSEEK_FIT_SCORING_MODEL`
+   `DEEPSEEK_REVIEW_GATE_MODEL`
 
 This is the recommended worker deployment path. The command-based Railway Python builder can fail to install both the worker dependencies and the shared `src/find_your_job` package into the same runtime environment.
 
@@ -152,13 +153,14 @@ and provide:
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `SUPABASE_ANON_KEY`
 - `RUN_SECRET_ENCRYPTION_KEY` shared by the API and worker for encrypting run-scoped user API keys
-- `OPENAI_API_KEY` for LLM-backed application writing
-- `OPENAI_MODEL`, `OPENAI_APPLICATION_WRITER_MODEL`, `OPENAI_FIT_SCORING_MODEL`, or `OPENAI_REVIEW_GATE_MODEL` to override default LLM-backed agent models
+- `DEEPSEEK_API_KEY` for hosted LLM-backed agents
+- `DEEPSEEK_BASE_URL` if you need to override the default DeepSeek API endpoint
+- `DEEPSEEK_MODEL`, `DEEPSEEK_APPLICATION_WRITER_MODEL`, `DEEPSEEK_FIT_SCORING_MODEL`, or `DEEPSEEK_REVIEW_GATE_MODEL` to override agent models
 - `NEXT_PUBLIC_API_BASE_URL`
 
 ## Hosted vs Local Key Model
 
-The current public hosted deployment is intended to use the server-side `OPENAI_API_KEY` configured on the worker.
+The current public hosted deployment is intended to use the server-side `DEEPSEEK_API_KEY` configured on the worker.
 
 The encrypted run-scoped user-key path remains in the codebase for a later self-hosted or local edition, where users can run the system in their own environment and provide their own key without routing prompts through the public hosted service.
 

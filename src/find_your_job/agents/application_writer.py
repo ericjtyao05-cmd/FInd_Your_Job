@@ -59,9 +59,10 @@ class ApplicationWriterAgent(Agent):
         model: str | None = None,
     ) -> None:
         super().__init__("application_writer_agent")
-        self.api_key = (api_key if api_key is not None else os.getenv("OPENAI_API_KEY", "")).strip() or None
-        self.model = (model or os.getenv("OPENAI_APPLICATION_WRITER_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-5.2").strip()
-        self._client = OpenAI(api_key=self.api_key) if self.api_key and OpenAI is not None else None
+        self.api_key = (api_key if api_key is not None else os.getenv("DEEPSEEK_API_KEY", "")).strip() or None
+        self.model = (model or os.getenv("DEEPSEEK_APPLICATION_WRITER_MODEL") or os.getenv("DEEPSEEK_MODEL") or "deepseek-chat").strip()
+        self.base_url = (os.getenv("DEEPSEEK_BASE_URL") or "https://api.deepseek.com").strip()
+        self._client = OpenAI(api_key=self.api_key, base_url=self.base_url) if self.api_key and OpenAI is not None else None
 
     def run(
         self,
@@ -137,16 +138,17 @@ class ApplicationWriterAgent(Agent):
         fit_score: FitScore,
     ) -> ApplicationPackage | None:
         try:
-            response = self._client.responses.create(
+            response = self._client.chat.completions.create(
                 model=self.model,
-                input=[
+                messages=[
                     {
-                        "role": "developer",
+                        "role": "system",
                         "content": (
-                            "You write grounded job application materials. Return JSON only. "
+                            "You write grounded job application materials. Return valid json only. "
                             "Do not fabricate candidate experience, credentials, employers, or metrics. "
                             "If job details are thin, stay conservative and use only the provided evidence. "
-                            "Keep bullet updates specific and actionable. Keep the cover letter concise."
+                            "Keep bullet updates specific and actionable. Keep the cover letter concise. "
+                            "Output json matching the requested structure."
                         ),
                     },
                     {
@@ -154,9 +156,10 @@ class ApplicationWriterAgent(Agent):
                         "content": self._build_prompt(candidate, job, fit_score),
                     },
                 ],
-                text={"format": APPLICATION_PACKAGE_SCHEMA},
+                response_format={"type": "json_object"},
+                max_tokens=1800,
             )
-            content = json.loads(response.output_text)
+            content = json.loads(response.choices[0].message.content or "{}")
             return ApplicationPackage(
                 job_id=job.id,
                 tailored_resume=ResumeEdit(
@@ -204,7 +207,15 @@ class ApplicationWriterAgent(Agent):
             "- bullet_updates: 3 or 4 concrete resume bullet rewrite instructions\n"
             "- highlighted_keywords: 4 to 8 role-relevant keywords\n"
             "- cover_letter: concise, specific, and evidence-based\n"
-            "- qa_script: 3 to 5 interview prep prompts with concise answer guidance"
+            "- qa_script: 3 to 5 interview prep prompts with concise answer guidance\n\n"
+            "JSON example:\n"
+            "{\n"
+            '  "summary": "Candidate summary",\n'
+            '  "bullet_updates": ["Update 1", "Update 2", "Update 3"],\n'
+            '  "highlighted_keywords": ["keyword1", "keyword2"],\n'
+            '  "cover_letter": "Letter text",\n'
+            '  "qa_script": ["Question -> answer guidance"]\n'
+            "}"
         )
 
     def _limit_strings(self, values: list[str], limit: int) -> list[str]:

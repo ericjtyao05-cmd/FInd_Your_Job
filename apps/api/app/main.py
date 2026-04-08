@@ -96,10 +96,10 @@ async def upload_resume(file: UploadFile = File(...)) -> ResumeUploadResponse:
 def create_run(request: RunCreateRequest) -> RunCreateResponse:
     supabase = get_supabase()
     encrypted_openai_key = None
-    if request.openai_api_key:
+    if request.deepseek_api_key:
         if not settings.run_secret_encryption_key:
             raise HTTPException(status_code=500, detail="Run secret encryption key is not configured on the server.")
-        encrypted_openai_key = encrypt_secret(request.openai_api_key, settings.run_secret_encryption_key)
+        encrypted_openai_key = encrypt_secret(request.deepseek_api_key, settings.run_secret_encryption_key)
 
     candidate_row = supabase.table("candidates").insert(
         {

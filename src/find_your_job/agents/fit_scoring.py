@@ -48,9 +48,10 @@ class FitScoringAgent(Agent):
         model: str | None = None,
     ) -> None:
         super().__init__("fit_scoring_agent")
-        self.api_key = (api_key if api_key is not None else os.getenv("OPENAI_API_KEY", "")).strip() or None
-        self.model = (model or os.getenv("OPENAI_FIT_SCORING_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-5.2").strip()
-        self._client = OpenAI(api_key=self.api_key) if self.api_key and OpenAI is not None else None
+        self.api_key = (api_key if api_key is not None else os.getenv("DEEPSEEK_API_KEY", "")).strip() or None
+        self.model = (model or os.getenv("DEEPSEEK_FIT_SCORING_MODEL") or os.getenv("DEEPSEEK_MODEL") or "deepseek-chat").strip()
+        self.base_url = (os.getenv("DEEPSEEK_BASE_URL") or "https://api.deepseek.com").strip()
+        self._client = OpenAI(api_key=self.api_key, base_url=self.base_url) if self.api_key and OpenAI is not None else None
 
     def run(self, candidate: CandidateProfile, jobs: list[JobPosting]) -> AgentResult[list[FitScore]]:
         scores = [self._score_one(candidate, job) for job in jobs]
@@ -95,17 +96,17 @@ class FitScoringAgent(Agent):
         job: JobPosting,
     ) -> FitScore | None:
         try:
-            response = self._client.responses.create(
+            response = self._client.chat.completions.create(
                 model=self.model,
-                input=[
+                messages=[
                     {
-                        "role": "developer",
+                        "role": "system",
                         "content": (
-                            "You evaluate candidate-job fit conservatively. Return JSON only. "
+                            "You evaluate candidate-job fit conservatively. Return valid json only. "
                             "Do not invent qualifications, employers, credentials, or experience. "
                             "Base the score only on the provided candidate profile and job text. "
                             "A score above 85 requires strong direct evidence. "
-                            "Keep strengths and gaps specific."
+                            "Keep strengths and gaps specific. Output json matching the requested structure."
                         ),
                     },
                     {
@@ -113,9 +114,10 @@ class FitScoringAgent(Agent):
                         "content": self._build_prompt(candidate, job),
                     },
                 ],
-                text={"format": FIT_SCORE_SCHEMA},
+                response_format={"type": "json_object"},
+                max_tokens=1200,
             )
-            content = json.loads(response.output_text)
+            content = json.loads(response.choices[0].message.content or "{}")
             return FitScore(
                 job_id=job.id,
                 score=int(content["score"]),
@@ -149,7 +151,15 @@ class FitScoringAgent(Agent):
             "- matched_skills: concrete matched skills or evidence\n"
             "- strengths: 2 to 4 strengths\n"
             "- gaps: up to 5 material gaps\n"
-            "- rationale: concise explanation of the score"
+            "- rationale: concise explanation of the score\n\n"
+            "JSON example:\n"
+            "{\n"
+            '  "score": 78,\n'
+            '  "matched_skills": ["Python", "AWS"],\n'
+            '  "strengths": ["Strong backend overlap"],\n'
+            '  "gaps": ["Kubernetes"],\n'
+            '  "rationale": "Short explanation"\n'
+            "}"
         )
 
     def _limit_strings(self, values: list[str], limit: int) -> list[str]:

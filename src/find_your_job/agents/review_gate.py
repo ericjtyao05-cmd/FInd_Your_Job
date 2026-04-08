@@ -52,9 +52,10 @@ class ReviewGateAgent(Agent):
         model: str | None = None,
     ) -> None:
         super().__init__("review_gate_agent")
-        self.api_key = (api_key if api_key is not None else os.getenv("OPENAI_API_KEY", "")).strip() or None
-        self.model = (model or os.getenv("OPENAI_REVIEW_GATE_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-5.2").strip()
-        self._client = OpenAI(api_key=self.api_key) if self.api_key and OpenAI is not None else None
+        self.api_key = (api_key if api_key is not None else os.getenv("DEEPSEEK_API_KEY", "")).strip() or None
+        self.model = (model or os.getenv("DEEPSEEK_REVIEW_GATE_MODEL") or os.getenv("DEEPSEEK_MODEL") or "deepseek-chat").strip()
+        self.base_url = (os.getenv("DEEPSEEK_BASE_URL") or "https://api.deepseek.com").strip()
+        self._client = OpenAI(api_key=self.api_key, base_url=self.base_url) if self.api_key and OpenAI is not None else None
 
     def run(
         self,
@@ -129,16 +130,17 @@ class ReviewGateAgent(Agent):
         browser_result: BrowserExecutionResult,
     ) -> ReviewDecision | None:
         try:
-            response = self._client.responses.create(
+            response = self._client.chat.completions.create(
                 model=self.model,
-                input=[
+                messages=[
                     {
-                        "role": "developer",
+                        "role": "system",
                         "content": (
-                            "You are a conservative application review gate. Return JSON only. "
+                            "You are a conservative application review gate. Return valid json only. "
                             "Flag unsupported claims, overconfident language, weak evidence, and risky gap statements. "
                             "Do not approve questionable claims just because they sound plausible. "
-                            "If browser automation reported mistakes, the status must be blocked."
+                            "If browser automation reported mistakes, the status must be blocked. "
+                            "Output json matching the requested structure."
                         ),
                     },
                     {
@@ -146,9 +148,10 @@ class ReviewGateAgent(Agent):
                         "content": self._build_prompt(application, fit_score, browser_result),
                     },
                 ],
-                text={"format": REVIEW_GATE_SCHEMA},
+                response_format={"type": "json_object"},
+                max_tokens=1200,
             )
-            content = json.loads(response.output_text)
+            content = json.loads(response.choices[0].message.content or "{}")
             status = ApplicationStatus(content["status"])
             if browser_result.mistakes:
                 status = ApplicationStatus.BLOCKED
@@ -190,7 +193,14 @@ class ReviewGateAgent(Agent):
             "- status: ready, needs_review, or blocked\n"
             "- risky_paragraphs: exact passages or concise issue labels requiring user review\n"
             "- confirmation_required: boolean\n"
-            "- notes: concise review notes"
+            "- notes: concise review notes\n\n"
+            "JSON example:\n"
+            "{\n"
+            '  "status": "needs_review",\n'
+            '  "risky_paragraphs": ["Gap claim needs review"],\n'
+            '  "confirmation_required": true,\n'
+            '  "notes": ["Final user confirmation is required before apply."]\n'
+            "}"
         )
 
     def _limit_strings(self, values: list[str], limit: int) -> list[str]:
