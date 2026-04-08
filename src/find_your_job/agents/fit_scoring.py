@@ -4,7 +4,7 @@ import json
 import os
 import re
 
-from .base import Agent, AgentResult
+from .base import Agent, AgentResult, LLMFallbackMixin
 from find_your_job.models import CandidateProfile, FitScore, JobPosting
 
 try:
@@ -41,17 +41,19 @@ FIT_SCORE_SCHEMA = {
 }
 
 
-class FitScoringAgent(Agent):
+class FitScoringAgent(Agent, LLMFallbackMixin):
     def __init__(
         self,
         api_key: str | None = None,
         model: str | None = None,
     ) -> None:
         super().__init__("fit_scoring_agent")
+        self.llm_status = None
         self.api_key = (api_key if api_key is not None else os.getenv("DEEPSEEK_API_KEY", "")).strip() or None
         self.model = (model or os.getenv("DEEPSEEK_FIT_SCORING_MODEL") or os.getenv("DEEPSEEK_MODEL") or "deepseek-chat").strip()
         self.base_url = (os.getenv("DEEPSEEK_BASE_URL") or "https://api.deepseek.com").strip()
-        self._client = OpenAI(api_key=self.api_key, base_url=self.base_url) if self.api_key and OpenAI is not None else None
+        self.request_timeout = float(os.getenv("DEEPSEEK_TIMEOUT_SECONDS") or "25")
+        self._client = OpenAI(api_key=self.api_key, base_url=self.base_url, timeout=self.request_timeout) if self.api_key and OpenAI is not None else None
 
     def run(self, candidate: CandidateProfile, jobs: list[JobPosting]) -> AgentResult[list[FitScore]]:
         scores = [self._score_one(candidate, job) for job in jobs]
@@ -62,8 +64,13 @@ class FitScoringAgent(Agent):
         if self._client is not None:
             llm_score = self._score_one_with_llm(candidate, job)
             if llm_score is not None:
+                self._set_llm_status(f"deepseek_ok:{self.model}")
                 return llm_score
 
+        if self._client is None:
+            self._set_llm_status("fallback:no_deepseek_client")
+        elif self.llm_status is None:
+            self._set_llm_status("fallback:unknown_deepseek_error")
         description = job.description.lower()
         candidate_skills = {skill.lower(): skill for skill in candidate.skills}
         matched = [original for key, original in candidate_skills.items() if key in description]
@@ -126,7 +133,8 @@ class FitScoringAgent(Agent):
                 gaps=self._limit_strings(content["gaps"], limit=5),
                 rationale=content["rationale"].strip(),
             )
-        except Exception:  # pragma: no cover
+        except Exception as exc:  # pragma: no cover
+            self._set_llm_status(f"fallback:{exc.__class__.__name__}:{str(exc)[:180]}")
             return None
 
     def _build_prompt(self, candidate: CandidateProfile, job: JobPosting) -> str:

@@ -16,3 +16,10 @@ class Agent:
 
     def __init__(self, name: str) -> None:
         self.name = name
+
+
+class LLMFallbackMixin:
+    llm_status: str | None = None
+
+    def _set_llm_status(self, status: str) -> None:
+        self.llm_status = status

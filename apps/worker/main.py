@@ -85,12 +85,18 @@ def main() -> None:
 
                 run_openai_key = _resolve_run_openai_key(run, log)
 
-                fit_scores = FitScoringAgent(api_key=run_openai_key).run(candidate, research.deduplicated_jobs).payload
+                fit_agent = FitScoringAgent(api_key=run_openai_key)
+                fit_scores = fit_agent.run(candidate, research.deduplicated_jobs).payload
                 log("step", "fit_scoring", {"message": f"Scored {len(fit_scores)} jobs."})
+                if getattr(fit_agent, "llm_status", None):
+                    log("log", "fit_scoring", {"message": fit_agent.llm_status})
                 _stdout(f"run {run_id}: scored {len(fit_scores)} jobs")
 
-                applications = ApplicationWriterAgent(api_key=run_openai_key).run(candidate, research.deduplicated_jobs, fit_scores, top_n=run["top_n"]).payload
+                writer_agent = ApplicationWriterAgent(api_key=run_openai_key)
+                applications = writer_agent.run(candidate, research.deduplicated_jobs, fit_scores, top_n=run["top_n"]).payload
                 log("step", "application_writer", {"message": f"Generated {len(applications)} application packages."})
+                if getattr(writer_agent, "llm_status", None):
+                    log("log", "application_writer", {"message": writer_agent.llm_status})
                 _stdout(f"run {run_id}: generated {len(applications)} application packages")
 
                 for job in research.deduplicated_jobs:
@@ -161,8 +167,11 @@ def main() -> None:
                 log("step", "browser_executor", {"message": f"Executed {len(browser_tasks)} browser tasks and skipped {len(applications) - len(browser_tasks)} unsupported jobs."})
                 _stdout(f"run {run_id}: executed {len(browser_tasks)} browser tasks, skipped {len(applications) - len(browser_tasks)}")
 
-                reviews = ReviewGateAgent(api_key=run_openai_key).run(applications, fit_scores, browser_results).payload
+                review_agent = ReviewGateAgent(api_key=run_openai_key)
+                reviews = review_agent.run(applications, fit_scores, browser_results).payload
                 log("step", "review_gate", {"message": "Review gate complete."})
+                if getattr(review_agent, "llm_status", None):
+                    log("log", "review_gate", {"message": review_agent.llm_status})
                 _stdout(f"run {run_id}: review gate complete")
 
                 for job in research.deduplicated_jobs:

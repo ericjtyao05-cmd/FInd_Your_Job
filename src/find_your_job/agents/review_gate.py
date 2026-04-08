@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 
-from .base import Agent, AgentResult
+from .base import Agent, AgentResult, LLMFallbackMixin
 from find_your_job.models import (
     ApplicationPackage,
     ApplicationStatus,
@@ -45,17 +45,19 @@ REVIEW_GATE_SCHEMA = {
 }
 
 
-class ReviewGateAgent(Agent):
+class ReviewGateAgent(Agent, LLMFallbackMixin):
     def __init__(
         self,
         api_key: str | None = None,
         model: str | None = None,
     ) -> None:
         super().__init__("review_gate_agent")
+        self.llm_status = None
         self.api_key = (api_key if api_key is not None else os.getenv("DEEPSEEK_API_KEY", "")).strip() or None
         self.model = (model or os.getenv("DEEPSEEK_REVIEW_GATE_MODEL") or os.getenv("DEEPSEEK_MODEL") or "deepseek-chat").strip()
         self.base_url = (os.getenv("DEEPSEEK_BASE_URL") or "https://api.deepseek.com").strip()
-        self._client = OpenAI(api_key=self.api_key, base_url=self.base_url) if self.api_key and OpenAI is not None else None
+        self.request_timeout = float(os.getenv("DEEPSEEK_TIMEOUT_SECONDS") or "25")
+        self._client = OpenAI(api_key=self.api_key, base_url=self.base_url, timeout=self.request_timeout) if self.api_key and OpenAI is not None else None
 
     def run(
         self,
@@ -86,8 +88,13 @@ class ReviewGateAgent(Agent):
         if self._client is not None:
             llm_review = self._review_one_with_llm(application, fit_score, browser_result)
             if llm_review is not None:
+                self._set_llm_status(f"deepseek_ok:{self.model}")
                 return llm_review
 
+        if self._client is None:
+            self._set_llm_status("fallback:no_deepseek_client")
+        elif self.llm_status is None:
+            self._set_llm_status("fallback:unknown_deepseek_error")
         return self._review_one_fallback(application, fit_score, browser_result)
 
     def _review_one_fallback(
@@ -162,7 +169,8 @@ class ReviewGateAgent(Agent):
                 confirmation_required=bool(content["confirmation_required"]),
                 notes=self._limit_strings(content["notes"], limit=5) or ["Final user confirmation is required before apply."],
             )
-        except Exception:  # pragma: no cover
+        except Exception as exc:  # pragma: no cover
+            self._set_llm_status(f"fallback:{exc.__class__.__name__}:{str(exc)[:180]}")
             return None
 
     def _build_prompt(

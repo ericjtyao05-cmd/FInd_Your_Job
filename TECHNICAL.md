@@ -106,6 +106,7 @@ Deploy on Railway:
    `DEEPSEEK_APPLICATION_WRITER_MODEL`
    `DEEPSEEK_FIT_SCORING_MODEL`
    `DEEPSEEK_REVIEW_GATE_MODEL`
+   `DEEPSEEK_TIMEOUT_SECONDS`
 
 This is the recommended worker deployment path. The command-based Railway Python builder can fail to install both the worker dependencies and the shared `src/find_your_job` package into the same runtime environment.
 
@@ -156,6 +157,7 @@ and provide:
 - `DEEPSEEK_API_KEY` for hosted LLM-backed agents
 - `DEEPSEEK_BASE_URL` if you need to override the default DeepSeek API endpoint
 - `DEEPSEEK_MODEL`, `DEEPSEEK_APPLICATION_WRITER_MODEL`, `DEEPSEEK_FIT_SCORING_MODEL`, or `DEEPSEEK_REVIEW_GATE_MODEL` to override agent models
+- `DEEPSEEK_TIMEOUT_SECONDS` to limit hosted model-call wait time
 - `NEXT_PUBLIC_API_BASE_URL`
 
 ## Hosted vs Local Key Model

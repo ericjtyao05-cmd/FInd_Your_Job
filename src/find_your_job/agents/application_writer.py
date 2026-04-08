@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 
-from .base import Agent, AgentResult
+from .base import Agent, AgentResult, LLMFallbackMixin
 from find_your_job.models import (
     ApplicationPackage,
     CandidateProfile,
@@ -52,17 +52,19 @@ APPLICATION_PACKAGE_SCHEMA = {
 }
 
 
-class ApplicationWriterAgent(Agent):
+class ApplicationWriterAgent(Agent, LLMFallbackMixin):
     def __init__(
         self,
         api_key: str | None = None,
         model: str | None = None,
     ) -> None:
         super().__init__("application_writer_agent")
+        self.llm_status = None
         self.api_key = (api_key if api_key is not None else os.getenv("DEEPSEEK_API_KEY", "")).strip() or None
         self.model = (model or os.getenv("DEEPSEEK_APPLICATION_WRITER_MODEL") or os.getenv("DEEPSEEK_MODEL") or "deepseek-chat").strip()
         self.base_url = (os.getenv("DEEPSEEK_BASE_URL") or "https://api.deepseek.com").strip()
-        self._client = OpenAI(api_key=self.api_key, base_url=self.base_url) if self.api_key and OpenAI is not None else None
+        self.request_timeout = float(os.getenv("DEEPSEEK_TIMEOUT_SECONDS") or "25")
+        self._client = OpenAI(api_key=self.api_key, base_url=self.base_url, timeout=self.request_timeout) if self.api_key and OpenAI is not None else None
 
     def run(
         self,
@@ -85,8 +87,13 @@ class ApplicationWriterAgent(Agent):
         if self._client is not None:
             llm_package = self._build_package_with_llm(candidate, job, fit_score)
             if llm_package is not None:
+                self._set_llm_status(f"deepseek_ok:{self.model}")
                 return llm_package
 
+        if self._client is None:
+            self._set_llm_status("fallback:no_deepseek_client")
+        elif self.llm_status is None:
+            self._set_llm_status("fallback:unknown_deepseek_error")
         return self._build_package_fallback(candidate, job, fit_score)
 
     def _build_package_fallback(
@@ -170,7 +177,8 @@ class ApplicationWriterAgent(Agent):
                 cover_letter=content["cover_letter"].strip(),
                 qa_script=self._limit_strings(content["qa_script"], limit=5),
             )
-        except Exception:  # pragma: no cover
+        except Exception as exc:  # pragma: no cover
+            self._set_llm_status(f"fallback:{exc.__class__.__name__}:{str(exc)[:180]}")
             return None
 
     def _build_prompt(
