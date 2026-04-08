@@ -2,6 +2,8 @@
 
 This file contains the implementation and deployment details for Find Your Job `v1.0`.
 
+Deployment note: use the latest `main` commit for Railway services rather than redeploying an older cached deployment snapshot.
+
 ## Architecture
 
 ```text
