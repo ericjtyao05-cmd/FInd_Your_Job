@@ -3,10 +3,11 @@ from __future__ import annotations
 import json
 from html import unescape
 import re
+import time
 from collections import defaultdict
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote_plus
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 from .base import Agent, AgentResult
 from find_your_job.models import CandidateProfile, JobCategory, JobPosting, ResearchResult, ResearchSource
@@ -60,6 +61,11 @@ LOCATION_ALIASES: dict[str, list[str]] = {
     "remote": ["remote", "worldwide", "global", "distributed", "hybrid"],
 }
 
+LINKEDIN_MAX_RESULTS = 12
+LINKEDIN_MAX_QUERY_PAIRS = 4
+LINKEDIN_MAX_SEARCH_TITLES = 3
+LINKEDIN_MAX_SEARCH_LOCATIONS = 3
+
 
 class ResearchAgent(Agent):
     def __init__(self) -> None:
@@ -111,7 +117,9 @@ class ResearchAgent(Agent):
         jobs: list[JobPosting] = []
         errors: list[str] = []
 
-        for source in sources:
+        ordered_sources = sorted(sources, key=lambda source: 1 if source.kind == "linkedin" else 0)
+
+        for source in ordered_sources:
             try:
                 if source.kind == "lever":
                     jobs.extend(self._fetch_lever_jobs(source, candidate))
@@ -121,6 +129,11 @@ class ResearchAgent(Agent):
                     jobs.extend(self._fetch_linkedin_jobs(source, candidate))
                 else:
                     errors.append(f"Unsupported research source kind: {source.kind}")
+            except HTTPError as exc:
+                if source.kind == "linkedin" and exc.code in {403, 429}:
+                    errors.append(f"{source.company} ({source.kind}) guest search was rate limited; continuing with official sources.")
+                else:
+                    errors.append(f"{source.company} ({source.kind}) fetch failed: {exc}")
             except (HTTPError, URLError, TimeoutError, ValueError) as exc:
                 errors.append(f"{source.company} ({source.kind}) fetch failed: {exc}")
 
@@ -156,24 +169,29 @@ class ResearchAgent(Agent):
         source: ResearchSource,
         candidate: CandidateProfile | None,
     ) -> list[JobPosting]:
-        search_titles = self._expanded_titles(candidate, source)[:8]
-        search_locations = self._expanded_locations(candidate, source)[:8] or [""]
+        search_titles = self._linkedin_search_titles(candidate, source)
+        search_locations = self._linkedin_search_locations(candidate, source)
         if not search_titles:
             return []
 
         jobs: list[JobPosting] = []
         seen_ids: set[str] = set()
-        max_results = 24
+        query_pairs = 0
 
         for title in search_titles:
             for location in search_locations:
+                query_pairs += 1
+                if query_pairs > LINKEDIN_MAX_QUERY_PAIRS:
+                    return jobs
+                if query_pairs > 1:
+                    time.sleep(0.4)
                 search_url = (
                     "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
                     f"?keywords={quote_plus(title)}&location={quote_plus(location)}&start=0"
                 )
                 html = self._load_text(search_url)
                 for match in self._parse_linkedin_cards(html):
-                    if len(jobs) >= max_results:
+                    if len(jobs) >= LINKEDIN_MAX_RESULTS:
                         return jobs
                     job_id = f"linkedin-{match['job_id']}"
                     if job_id in seen_ids:
@@ -192,6 +210,26 @@ class ResearchAgent(Agent):
                         seen_ids.add(job_id)
 
         return jobs
+
+    def _linkedin_search_titles(
+        self,
+        candidate: CandidateProfile | None,
+        source: ResearchSource,
+    ) -> list[str]:
+        prioritized = self._unique_preserve(list(candidate.target_titles) if candidate else [])
+        if not prioritized:
+            prioritized = self._expanded_titles(candidate, source)
+        return prioritized[:LINKEDIN_MAX_SEARCH_TITLES]
+
+    def _linkedin_search_locations(
+        self,
+        candidate: CandidateProfile | None,
+        source: ResearchSource,
+    ) -> list[str]:
+        prioritized = self._unique_preserve(list(candidate.preferred_locations) if candidate and candidate.preferred_locations else [])
+        if not prioritized:
+            prioritized = self._expanded_locations(candidate, source)
+        return (prioritized[:LINKEDIN_MAX_SEARCH_LOCATIONS] or [""])
 
     def _fetch_greenhouse_jobs(
         self,
@@ -294,12 +332,24 @@ class ResearchAgent(Agent):
         return ordered
 
     def _load_json(self, url: str) -> object:
-        with urlopen(url, timeout=20) as response:
+        request = Request(url, headers=self._request_headers())
+        with urlopen(request, timeout=20) as response:
             return json.loads(response.read().decode("utf-8"))
 
     def _load_text(self, url: str) -> str:
-        with urlopen(url, timeout=20) as response:
+        request = Request(url, headers=self._request_headers())
+        with urlopen(request, timeout=20) as response:
             return response.read().decode("utf-8", errors="replace")
+
+    def _request_headers(self) -> dict[str, str]:
+        return {
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            "Accept-Language": "en-US,en;q=0.9",
+        }
 
     def _dedupe_key(self, job: JobPosting) -> tuple[str, str, str]:
         return (

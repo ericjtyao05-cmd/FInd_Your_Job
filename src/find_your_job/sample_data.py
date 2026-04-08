@@ -63,20 +63,6 @@ def sample_jobs() -> list[JobPosting]:
 def sample_research_sources() -> list[ResearchSource]:
     return [
         ResearchSource(
-            kind="linkedin",
-            token="",
-            company="LinkedIn",
-            source_label="LinkedIn",
-        ),
-        ResearchSource(
-            kind="lever",
-            token="encord",
-            company="Encord",
-            source_label="Lever",
-            locations=["Remote", "London", "Europe", "Asia", "APAC"],
-            title_keywords=["Software Engineer", "Backend Engineer", "Platform Engineer"],
-        ),
-        ResearchSource(
             kind="lever",
             token="zopa",
             company="Zopa",
@@ -91,5 +77,11 @@ def sample_research_sources() -> list[ResearchSource]:
             source_label="Greenhouse",
             locations=["London", "Remote", "Europe", "APAC"],
             title_keywords=["Software Engineer", "Backend Engineer", "Staff Engineer"],
+        ),
+        ResearchSource(
+            kind="linkedin",
+            token="",
+            company="LinkedIn",
+            source_label="LinkedIn",
         ),
     ]
