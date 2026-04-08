@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import os
+
 from .base import Agent, AgentResult
 from find_your_job.models import (
     ApplicationPackage,
@@ -9,10 +12,56 @@ from find_your_job.models import (
     ResumeEdit,
 )
 
+try:
+    from openai import OpenAI
+except ImportError:  # pragma: no cover
+    OpenAI = None
+
+
+APPLICATION_PACKAGE_SCHEMA = {
+    "type": "json_schema",
+    "name": "application_package",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "summary": {"type": "string"},
+            "bullet_updates": {
+                "type": "array",
+                "items": {"type": "string"},
+            },
+            "highlighted_keywords": {
+                "type": "array",
+                "items": {"type": "string"},
+            },
+            "cover_letter": {"type": "string"},
+            "qa_script": {
+                "type": "array",
+                "items": {"type": "string"},
+            },
+        },
+        "required": [
+            "summary",
+            "bullet_updates",
+            "highlighted_keywords",
+            "cover_letter",
+            "qa_script",
+        ],
+        "additionalProperties": False,
+    },
+}
+
 
 class ApplicationWriterAgent(Agent):
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        api_key: str | None = None,
+        model: str | None = None,
+    ) -> None:
         super().__init__("application_writer_agent")
+        self.api_key = (api_key if api_key is not None else os.getenv("OPENAI_API_KEY", "")).strip() or None
+        self.model = (model or os.getenv("OPENAI_APPLICATION_WRITER_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-5.2").strip()
+        self._client = OpenAI(api_key=self.api_key) if self.api_key and OpenAI is not None else None
 
     def run(
         self,
@@ -27,6 +76,19 @@ class ApplicationWriterAgent(Agent):
         return AgentResult(agent_name=self.name, payload=packages)
 
     def _build_package(
+        self,
+        candidate: CandidateProfile,
+        job: JobPosting,
+        fit_score: FitScore,
+    ) -> ApplicationPackage:
+        if self._client is not None:
+            llm_package = self._build_package_with_llm(candidate, job, fit_score)
+            if llm_package is not None:
+                return llm_package
+
+        return self._build_package_fallback(candidate, job, fit_score)
+
+    def _build_package_fallback(
         self,
         candidate: CandidateProfile,
         job: JobPosting,
@@ -67,3 +129,84 @@ class ApplicationWriterAgent(Agent):
             cover_letter=cover_letter,
             qa_script=qa_script,
         )
+
+    def _build_package_with_llm(
+        self,
+        candidate: CandidateProfile,
+        job: JobPosting,
+        fit_score: FitScore,
+    ) -> ApplicationPackage | None:
+        try:
+            response = self._client.responses.create(
+                model=self.model,
+                input=[
+                    {
+                        "role": "developer",
+                        "content": (
+                            "You write grounded job application materials. Return JSON only. "
+                            "Do not fabricate candidate experience, credentials, employers, or metrics. "
+                            "If job details are thin, stay conservative and use only the provided evidence. "
+                            "Keep bullet updates specific and actionable. Keep the cover letter concise."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": self._build_prompt(candidate, job, fit_score),
+                    },
+                ],
+                text={"format": APPLICATION_PACKAGE_SCHEMA},
+            )
+            content = json.loads(response.output_text)
+            return ApplicationPackage(
+                job_id=job.id,
+                tailored_resume=ResumeEdit(
+                    summary=content["summary"].strip(),
+                    bullet_updates=self._limit_strings(content["bullet_updates"], limit=4),
+                    highlighted_keywords=self._limit_strings(content["highlighted_keywords"], limit=8),
+                ),
+                cover_letter=content["cover_letter"].strip(),
+                qa_script=self._limit_strings(content["qa_script"], limit=5),
+            )
+        except Exception:  # pragma: no cover
+            return None
+
+    def _build_prompt(
+        self,
+        candidate: CandidateProfile,
+        job: JobPosting,
+        fit_score: FitScore,
+    ) -> str:
+        return (
+            "Create tailored application materials from the structured context below.\n\n"
+            "Candidate:\n"
+            f"- Name: {candidate.name}\n"
+            f"- Years of experience: {candidate.years_experience}\n"
+            f"- Target titles: {', '.join(candidate.target_titles) or 'N/A'}\n"
+            f"- Preferred locations: {', '.join(candidate.preferred_locations) or 'N/A'}\n"
+            f"- Skills: {', '.join(candidate.skills) or 'N/A'}\n"
+            f"- Resume summary: {candidate.resume_text or 'N/A'}\n"
+            f"- Achievements: {', '.join(candidate.achievements) or 'N/A'}\n\n"
+            "Job:\n"
+            f"- Title: {job.title}\n"
+            f"- Company: {job.company}\n"
+            f"- Location: {job.location}\n"
+            f"- Source: {job.source}\n"
+            f"- URL: {job.url}\n"
+            f"- Description: {job.description or 'No detailed description available.'}\n\n"
+            "Fit analysis:\n"
+            f"- Score: {fit_score.score}\n"
+            f"- Matched skills: {', '.join(fit_score.matched_skills) or 'N/A'}\n"
+            f"- Strengths: {', '.join(fit_score.strengths) or 'N/A'}\n"
+            f"- Gaps: {', '.join(fit_score.gaps) or 'N/A'}\n"
+            f"- Rationale: {fit_score.rationale}\n\n"
+            "Return JSON with:\n"
+            "- summary: 1-2 sentences for the tailored resume summary\n"
+            "- bullet_updates: 3 or 4 concrete resume bullet rewrite instructions\n"
+            "- highlighted_keywords: 4 to 8 role-relevant keywords\n"
+            "- cover_letter: concise, specific, and evidence-based\n"
+            "- qa_script: 3 to 5 interview prep prompts with concise answer guidance"
+        )
+
+    def _limit_strings(self, values: list[str], limit: int) -> list[str]:
+        cleaned = [value.strip() for value in values if isinstance(value, str) and value.strip()]
+        return cleaned[:limit]

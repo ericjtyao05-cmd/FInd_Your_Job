@@ -99,6 +99,8 @@ Deploy on Railway:
    `SUPABASE_STORAGE_BUCKET`
    `WORKER_POLL_INTERVAL_SECONDS`
    `PLAYWRIGHT_HEADLESS`
+   `OPENAI_API_KEY`
+   `OPENAI_APPLICATION_WRITER_MODEL`
 
 This is the recommended worker deployment path. The command-based Railway Python builder can fail to install both the worker dependencies and the shared `src/find_your_job` package into the same runtime environment.
 
@@ -144,7 +146,8 @@ and provide:
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `SUPABASE_ANON_KEY`
-- `OPENAI_API_KEY` if you later add LLM-backed prompts
+- `OPENAI_API_KEY` for LLM-backed application writing
+- `OPENAI_MODEL` or `OPENAI_APPLICATION_WRITER_MODEL` to override the default writer model
 - `NEXT_PUBLIC_API_BASE_URL`
 
 ## Implementation Notes
