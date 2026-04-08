@@ -49,7 +49,6 @@ const COPY = {
     name: "Name",
     email: "Email Address",
     phone: "Phone Number",
-    apiKey: "OpenAI API Key",
     experience: "Years of Experience",
     skills: "Skills",
     resumeSummary: "Resume Summary",
@@ -105,7 +104,6 @@ const COPY = {
     name: "姓名",
     email: "邮箱地址",
     phone: "电话号码",
-    apiKey: "OpenAI API Key",
     experience: "工作年限",
     skills: "技能",
     resumeSummary: "简历摘要",
@@ -161,7 +159,6 @@ export default function Page() {
     name: "Alex Chen",
     email: "alex.chen@example.com",
     phone: "+44 7700 900123",
-    openaiApiKey: "",
     experience: "5",
     skills: "Python, SQL, AWS, Docker, Communication, APIs",
     resumeText: "Experienced engineer with backend and platform delivery experience.",
@@ -242,8 +239,7 @@ export default function Page() {
           live_research: true,
           allow_submit: form.allowSubmit,
           visual_browser: false,
-          top_n: 3,
-          openai_api_key: form.openaiApiKey.trim() || null
+          top_n: 3
         })
       });
 
@@ -363,14 +359,6 @@ export default function Page() {
               <div className="field">
                 <label>{t.phone}</label>
                 <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-              </div>
-              <div className="field">
-                <label>{t.apiKey}</label>
-                <input
-                  type="password"
-                  value={form.openaiApiKey}
-                  onChange={(e) => setForm({ ...form, openaiApiKey: e.target.value })}
-                />
               </div>
               <div className="field full">
                 <label>{t.skills}</label>

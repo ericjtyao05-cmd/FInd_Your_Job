@@ -156,6 +156,12 @@ and provide:
 - `OPENAI_MODEL`, `OPENAI_APPLICATION_WRITER_MODEL`, `OPENAI_FIT_SCORING_MODEL`, or `OPENAI_REVIEW_GATE_MODEL` to override default LLM-backed agent models
 - `NEXT_PUBLIC_API_BASE_URL`
 
+## Hosted vs Local Key Model
+
+The current public hosted deployment is intended to use the server-side `OPENAI_API_KEY` configured on the worker.
+
+The encrypted run-scoped user-key path remains in the codebase for a later self-hosted or local edition, where users can run the system in their own environment and provide their own key without routing prompts through the public hosted service.
+
 ## Implementation Notes
 
 What is implemented in `v1.0`:
