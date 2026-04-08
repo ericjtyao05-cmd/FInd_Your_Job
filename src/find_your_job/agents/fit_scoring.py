@@ -1,14 +1,56 @@
 from __future__ import annotations
 
+import json
+import os
 import re
 
 from .base import Agent, AgentResult
 from find_your_job.models import CandidateProfile, FitScore, JobPosting
 
+try:
+    from openai import OpenAI
+except ImportError:  # pragma: no cover
+    OpenAI = None
+
+
+FIT_SCORE_SCHEMA = {
+    "type": "json_schema",
+    "name": "fit_score",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "score": {"type": "integer", "minimum": 0, "maximum": 100},
+            "matched_skills": {
+                "type": "array",
+                "items": {"type": "string"},
+            },
+            "strengths": {
+                "type": "array",
+                "items": {"type": "string"},
+            },
+            "gaps": {
+                "type": "array",
+                "items": {"type": "string"},
+            },
+            "rationale": {"type": "string"},
+        },
+        "required": ["score", "matched_skills", "strengths", "gaps", "rationale"],
+        "additionalProperties": False,
+    },
+}
+
 
 class FitScoringAgent(Agent):
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        api_key: str | None = None,
+        model: str | None = None,
+    ) -> None:
         super().__init__("fit_scoring_agent")
+        self.api_key = (api_key if api_key is not None else os.getenv("OPENAI_API_KEY", "")).strip() or None
+        self.model = (model or os.getenv("OPENAI_FIT_SCORING_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-5.2").strip()
+        self._client = OpenAI(api_key=self.api_key) if self.api_key and OpenAI is not None else None
 
     def run(self, candidate: CandidateProfile, jobs: list[JobPosting]) -> AgentResult[list[FitScore]]:
         scores = [self._score_one(candidate, job) for job in jobs]
@@ -16,6 +58,11 @@ class FitScoringAgent(Agent):
         return AgentResult(agent_name=self.name, payload=scores)
 
     def _score_one(self, candidate: CandidateProfile, job: JobPosting) -> FitScore:
+        if self._client is not None:
+            llm_score = self._score_one_with_llm(candidate, job)
+            if llm_score is not None:
+                return llm_score
+
         description = job.description.lower()
         candidate_skills = {skill.lower(): skill for skill in candidate.skills}
         matched = [original for key, original in candidate_skills.items() if key in description]
@@ -41,6 +88,73 @@ class FitScoringAgent(Agent):
             gaps=gaps[:5],
             rationale=rationale,
         )
+
+    def _score_one_with_llm(
+        self,
+        candidate: CandidateProfile,
+        job: JobPosting,
+    ) -> FitScore | None:
+        try:
+            response = self._client.responses.create(
+                model=self.model,
+                input=[
+                    {
+                        "role": "developer",
+                        "content": (
+                            "You evaluate candidate-job fit conservatively. Return JSON only. "
+                            "Do not invent qualifications, employers, credentials, or experience. "
+                            "Base the score only on the provided candidate profile and job text. "
+                            "A score above 85 requires strong direct evidence. "
+                            "Keep strengths and gaps specific."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": self._build_prompt(candidate, job),
+                    },
+                ],
+                text={"format": FIT_SCORE_SCHEMA},
+            )
+            content = json.loads(response.output_text)
+            return FitScore(
+                job_id=job.id,
+                score=int(content["score"]),
+                matched_skills=self._limit_strings(content["matched_skills"], limit=8),
+                strengths=self._limit_strings(content["strengths"], limit=4),
+                gaps=self._limit_strings(content["gaps"], limit=5),
+                rationale=content["rationale"].strip(),
+            )
+        except Exception:  # pragma: no cover
+            return None
+
+    def _build_prompt(self, candidate: CandidateProfile, job: JobPosting) -> str:
+        return (
+            "Score the candidate's fit for the job from 0 to 100.\n\n"
+            "Candidate:\n"
+            f"- Name: {candidate.name}\n"
+            f"- Target titles: {', '.join(candidate.target_titles) or 'N/A'}\n"
+            f"- Preferred locations: {', '.join(candidate.preferred_locations) or 'N/A'}\n"
+            f"- Years of experience: {candidate.years_experience}\n"
+            f"- Skills: {', '.join(candidate.skills) or 'N/A'}\n"
+            f"- Resume summary: {candidate.resume_text or 'N/A'}\n"
+            f"- Achievements: {', '.join(candidate.achievements) or 'N/A'}\n\n"
+            "Job:\n"
+            f"- Title: {job.title}\n"
+            f"- Company: {job.company}\n"
+            f"- Location: {job.location}\n"
+            f"- Source: {job.source}\n"
+            f"- Description: {job.description or 'No detailed description available.'}\n\n"
+            "Return JSON with:\n"
+            "- score: integer 0-100\n"
+            "- matched_skills: concrete matched skills or evidence\n"
+            "- strengths: 2 to 4 strengths\n"
+            "- gaps: up to 5 material gaps\n"
+            "- rationale: concise explanation of the score"
+        )
+
+    def _limit_strings(self, values: list[str], limit: int) -> list[str]:
+        cleaned = [value.strip() for value in values if isinstance(value, str) and value.strip()]
+        return cleaned[:limit]
 
     def _extract_keywords(self, description: str) -> list[str]:
         tracked = [
