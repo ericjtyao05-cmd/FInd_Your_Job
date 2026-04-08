@@ -64,6 +64,7 @@ Deploy on Railway:
    `SUPABASE_URL`
    `SUPABASE_SERVICE_ROLE_KEY`
    `SUPABASE_STORAGE_BUCKET`
+   `RUN_SECRET_ENCRYPTION_KEY`
 4. Start command:
    `uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}`
 
@@ -99,6 +100,7 @@ Deploy on Railway:
    `SUPABASE_STORAGE_BUCKET`
    `WORKER_POLL_INTERVAL_SECONDS`
    `PLAYWRIGHT_HEADLESS`
+   `RUN_SECRET_ENCRYPTION_KEY`
    `OPENAI_API_KEY`
    `OPENAI_APPLICATION_WRITER_MODEL`
    `OPENAI_FIT_SCORING_MODEL`
@@ -111,6 +113,7 @@ This is the recommended worker deployment path. The command-based Railway Python
 Apply the schema in:
 
 - [001_init.sql](/Users/ericyao/agent_projects/Find_Your_Job/supabase/migrations/001_init.sql)
+- [002_add_llm_api_key_to_workflow_runs.sql](/Users/ericyao/agent_projects/Find_Your_Job/supabase/migrations/002_add_llm_api_key_to_workflow_runs.sql)
 
 It creates tables for:
 
@@ -148,6 +151,7 @@ and provide:
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `SUPABASE_ANON_KEY`
+- `RUN_SECRET_ENCRYPTION_KEY` shared by the API and worker for encrypting run-scoped user API keys
 - `OPENAI_API_KEY` for LLM-backed application writing
 - `OPENAI_MODEL`, `OPENAI_APPLICATION_WRITER_MODEL`, `OPENAI_FIT_SCORING_MODEL`, or `OPENAI_REVIEW_GATE_MODEL` to override default LLM-backed agent models
 - `NEXT_PUBLIC_API_BASE_URL`

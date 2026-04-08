@@ -21,6 +21,7 @@ class RunCreateRequest(BaseModel):
     allow_submit: bool = False
     visual_browser: bool = False
     top_n: int = 3
+    openai_api_key: str | None = None
 
 
 class RunCreateResponse(BaseModel):

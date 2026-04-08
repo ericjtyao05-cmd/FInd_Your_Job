@@ -14,6 +14,7 @@ from find_your_job.agents import ApplicationWriterAgent, BrowserExecutorAgent, F
 from find_your_job.browser_adapters import BrowserTaskBuilder
 from find_your_job.models import BrowserExecutionResult, CandidateProfile, ResearchSource
 from find_your_job.sample_data import sample_research_sources
+from security import decrypt_secret
 
 
 def main() -> None:
@@ -82,11 +83,13 @@ def main() -> None:
                     log("log", "research", {"message": "Research source errors detected.", "source_errors": research.source_errors})
                 _stdout(f"run {run_id}: research found {len(research.deduplicated_jobs)} jobs")
 
-                fit_scores = FitScoringAgent().run(candidate, research.deduplicated_jobs).payload
+                run_openai_key = _resolve_run_openai_key(run, log)
+
+                fit_scores = FitScoringAgent(api_key=run_openai_key).run(candidate, research.deduplicated_jobs).payload
                 log("step", "fit_scoring", {"message": f"Scored {len(fit_scores)} jobs."})
                 _stdout(f"run {run_id}: scored {len(fit_scores)} jobs")
 
-                applications = ApplicationWriterAgent().run(candidate, research.deduplicated_jobs, fit_scores, top_n=run["top_n"]).payload
+                applications = ApplicationWriterAgent(api_key=run_openai_key).run(candidate, research.deduplicated_jobs, fit_scores, top_n=run["top_n"]).payload
                 log("step", "application_writer", {"message": f"Generated {len(applications)} application packages."})
                 _stdout(f"run {run_id}: generated {len(applications)} application packages")
 
@@ -158,7 +161,7 @@ def main() -> None:
                 log("step", "browser_executor", {"message": f"Executed {len(browser_tasks)} browser tasks and skipped {len(applications) - len(browser_tasks)} unsupported jobs."})
                 _stdout(f"run {run_id}: executed {len(browser_tasks)} browser tasks, skipped {len(applications) - len(browser_tasks)}")
 
-                reviews = ReviewGateAgent().run(applications, fit_scores, browser_results).payload
+                reviews = ReviewGateAgent(api_key=run_openai_key).run(applications, fit_scores, browser_results).payload
                 log("step", "review_gate", {"message": "Review gate complete."})
                 _stdout(f"run {run_id}: review gate complete")
 
@@ -239,6 +242,20 @@ def _materialize_resume_file(supabase, resume_path: str | None, temp_dir: str) -
 
     target_path.write_bytes(payload)
     return str(target_path.resolve())
+
+
+def _resolve_run_openai_key(run: dict, log) -> str | None:
+    ciphertext = run.get("llm_api_key_ciphertext")
+    if not ciphertext:
+        return None
+    if not settings.run_secret_encryption_key:
+        log("log", None, {"message": "Encrypted run-scoped OpenAI key was present but worker decryption key is not configured."})
+        return None
+    try:
+        return decrypt_secret(ciphertext, settings.run_secret_encryption_key)
+    except Exception as exc:  # pragma: no cover
+        log("log", None, {"message": f"Failed to decrypt run-scoped OpenAI key: {exc}"})
+        return None
 
 
 def _upload_browser_artifact(supabase, run_id: str, job_id: str, local_path: str) -> dict[str, str]:

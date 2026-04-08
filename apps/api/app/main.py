@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .db import get_supabase
+from .security import encrypt_secret
 from .schemas import ResumeUploadResponse, RunCreateRequest, RunCreateResponse, RunDetailResponse
 
 
@@ -94,6 +95,11 @@ async def upload_resume(file: UploadFile = File(...)) -> ResumeUploadResponse:
 @app.post("/api/runs", response_model=RunCreateResponse)
 def create_run(request: RunCreateRequest) -> RunCreateResponse:
     supabase = get_supabase()
+    encrypted_openai_key = None
+    if request.openai_api_key:
+        if not settings.run_secret_encryption_key:
+            raise HTTPException(status_code=500, detail="Run secret encryption key is not configured on the server.")
+        encrypted_openai_key = encrypt_secret(request.openai_api_key, settings.run_secret_encryption_key)
 
     candidate_row = supabase.table("candidates").insert(
         {
@@ -116,6 +122,7 @@ def create_run(request: RunCreateRequest) -> RunCreateResponse:
             "allow_submit": request.allow_submit,
             "visual_browser": request.visual_browser,
             "top_n": request.top_n,
+            "llm_api_key_ciphertext": encrypted_openai_key,
         }
     ).execute()
     run = run_row.data[0]
