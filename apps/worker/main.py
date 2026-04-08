@@ -20,13 +20,14 @@ from security import decrypt_secret
 def main() -> None:
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
     browser_builder = BrowserTaskBuilder()
-    _stdout("worker booted")
+    worker_revision = _worker_revision()
+    _stdout(f"worker booted ({worker_revision})")
 
     while True:
         try:
             queued = (
                 supabase.table("workflow_runs")
-                .select("*, candidates(*)")
+                .select("*")
                 .eq("status", "queued")
                 .order("created_at")
                 .limit(1)
@@ -45,7 +46,33 @@ def main() -> None:
 
         run = queued[0]
         run_id = run["id"]
-        _stdout(f"picked queued run {run_id}")
+        claim = (
+            supabase.table("workflow_runs")
+            .update({"status": "running"})
+            .eq("id", run_id)
+            .eq("status", "queued")
+            .execute()
+        )
+        if not claim.data:
+            _stdout(f"claim skipped for run {run_id}; another worker already owns it")
+            time.sleep(settings.worker_poll_interval_seconds)
+            continue
+
+        run_rows = (
+            supabase.table("workflow_runs")
+            .select("*, candidates(*)")
+            .eq("id", run_id)
+            .limit(1)
+            .execute()
+            .data
+        )
+        if not run_rows:
+            _stdout(f"claimed run {run_id} but failed to reload it")
+            time.sleep(settings.worker_poll_interval_seconds)
+            continue
+
+        run = run_rows[0]
+        _stdout(f"claimed run {run_id}")
         candidate_row = run["candidates"]
         candidate = CandidateProfile(
             name=candidate_row["name"],
@@ -57,13 +84,12 @@ def main() -> None:
             resume_path=candidate_row["resume_file_path"],
         )
 
-        supabase.table("workflow_runs").update({"status": "running"}).eq("id", run_id).execute()
-        _stdout(f"set run {run_id} to running")
-
         def log(event_type: str, step: str | None, payload: dict) -> None:
             supabase.table("workflow_events").insert(
                 {"run_id": run_id, "event_type": event_type, "step": step, "payload": payload}
             ).execute()
+
+        log("log", None, {"message": f"Worker revision: {worker_revision}"})
 
         try:
             with tempfile.TemporaryDirectory(prefix="find-your-job-worker-") as temp_dir:
@@ -265,6 +291,15 @@ def _resolve_run_openai_key(run: dict, log) -> str | None:
     except Exception as exc:  # pragma: no cover
         log("log", None, {"message": f"Failed to decrypt run-scoped OpenAI key: {exc}"})
         return None
+
+
+def _worker_revision() -> str:
+    return (
+        os.getenv("RAILWAY_GIT_COMMIT_SHA")
+        or os.getenv("RAILWAY_GIT_COMMIT")
+        or os.getenv("GIT_COMMIT")
+        or "unknown-revision"
+    )
 
 
 def _upload_browser_artifact(supabase, run_id: str, job_id: str, local_path: str) -> dict[str, str]:
