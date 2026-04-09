@@ -4,6 +4,11 @@ This file contains the implementation and deployment details for Find Your Job `
 
 Deployment note: use the latest `main` commit for Railway services rather than redeploying an older cached deployment snapshot.
 
+Current public URLs:
+
+- Frontend: `https://findyourjob-lusmh75vq-ericyaos-projects.vercel.app`
+- API: `https://findyourjob-production.up.railway.app`
+
 ## Architecture
 
 ```text
@@ -31,7 +36,7 @@ The frontend in `apps/web` is a Next.js app that:
 Set:
 
 ```bash
-NEXT_PUBLIC_API_BASE_URL=https://your-railway-api.up.railway.app
+NEXT_PUBLIC_API_BASE_URL=https://findyourjob-production.up.railway.app
 ```
 
 Deploy on Vercel:
