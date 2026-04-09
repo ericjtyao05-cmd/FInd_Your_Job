@@ -42,6 +42,7 @@ const COPY = {
     formInfo: "Form Information",
     resumeSection: "Resume Upload",
     agentBoard: "Agent Board",
+    matchWindow: "Match Results",
     reviewGate: "Review Gate",
     reviewAction: "User action happens here before anything risky moves forward.",
     targetTitles: "Target Titles",
@@ -86,6 +87,9 @@ const COPY = {
     coverLetter: "Cover Letter",
     noCoverLetter: "No draft generated yet.",
     openPosting: "Open posting",
+    matchWindowHint: "Research and fit scoring results land here before the final review step.",
+    fitScoreLabel: "Fit score",
+    rationaleLabel: "Why it fits",
   },
   zh: {
     langEn: "EN",
@@ -97,6 +101,7 @@ const COPY = {
     formInfo: "表单信息",
     resumeSection: "简历上传",
     agentBoard: "智能体面板",
+    matchWindow: "匹配结果",
     reviewGate: "审核关卡",
     reviewAction: "高风险动作进入下一步之前，用户需要在这里处理。",
     targetTitles: "目标职位",
@@ -141,6 +146,9 @@ const COPY = {
     coverLetter: "求职信",
     noCoverLetter: "尚未生成文稿。",
     openPosting: "打开职位",
+    matchWindowHint: "研究智能体和匹配评分智能体的结果会先显示在这里，再进入最终审核。",
+    fitScoreLabel: "匹配分数",
+    rationaleLabel: "匹配原因",
   }
 } as const;
 
@@ -265,13 +273,25 @@ export default function Page() {
     () => (detail?.jobs ?? []).filter((job) => job.review_status || job.review_notes?.length > 0),
     [detail]
   );
+  const researchCount = getStepCount(detail, "research", detail?.jobs.length ?? 0);
+  const fitCount = getStepCount(
+    detail,
+    "fit_scoring",
+    (detail?.jobs ?? []).filter((job) => job.fit_score !== null).length
+  );
+  const applicationCount = getStepCount(detail, "application_writer", detail?.applications.length ?? 0);
+  const browserCount = getStepCount(
+    detail,
+    "browser_executor",
+    (detail?.jobs ?? []).filter((job) => job.review_status !== null).length
+  );
 
   const agentCards = [
     {
       key: "research",
       title: t.researchAgent,
       summary: t.researchSummary,
-      value: detail?.jobs.length ?? 0,
+      value: researchCount,
       suffix: t.itemsFound,
       state: resolveStepState(detail, "research"),
     },
@@ -279,7 +299,7 @@ export default function Page() {
       key: "fit_scoring",
       title: t.fitAgent,
       summary: t.fitSummary,
-      value: (detail?.jobs ?? []).filter((job) => job.fit_score !== null).length,
+      value: fitCount,
       suffix: t.scoredItems,
       state: resolveStepState(detail, "fit_scoring"),
     },
@@ -287,7 +307,7 @@ export default function Page() {
       key: "application_writer",
       title: t.writerAgent,
       summary: t.writerSummary,
-      value: detail?.applications.length ?? 0,
+      value: applicationCount,
       suffix: t.draftedItems,
       state: resolveStepState(detail, "application_writer"),
     },
@@ -295,7 +315,7 @@ export default function Page() {
       key: "browser_executor",
       title: t.browserAgent,
       summary: t.browserSummary,
-      value: (detail?.jobs ?? []).filter((job) => job.review_status !== "blocked").length,
+      value: browserCount,
       suffix: t.browserItems,
       state: resolveStepState(detail, "browser_executor"),
     },
@@ -411,6 +431,46 @@ export default function Page() {
             ))}
           </div>
 
+          <section className="matches-window">
+            <div className="matches-head">
+              <div>
+                <div className="eyebrow">{t.matchWindow}</div>
+                <h3>{t.matchWindowHint}</h3>
+              </div>
+            </div>
+
+            {detail?.jobs?.length ? (
+              <div className="match-list">
+                {detail.jobs.map((job) => (
+                  <button
+                    key={job.external_job_id}
+                    className={`match-card ${selectedJob?.external_job_id === job.external_job_id ? "active" : ""}`}
+                    onClick={() => setSelectedJobId(job.external_job_id)}
+                  >
+                    <div className="job-head">
+                      <div>
+                        <strong>{job.title}</strong>
+                        <div className="muted">{job.company} · {job.location} · {job.source}</div>
+                      </div>
+                      <div className="match-score-block">
+                        <span className="section-label">{t.fitScoreLabel}</span>
+                        <span className="score large">{job.fit_score !== null ? `${job.fit_score}/100` : "-"}</span>
+                      </div>
+                    </div>
+                    <div className="pillbar">
+                      <span className="pill">{job.category}</span>
+                      {job.review_status && <span className="pill">{job.review_status}</span>}
+                    </div>
+                    <div className="section-label">{t.rationaleLabel}</div>
+                    <p className="match-rationale">{job.fit_rationale ?? t.fitPending}</p>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="empty">{t.noResults}</div>
+            )}
+          </section>
+
           <section className="review-window">
             <div className="review-window-head">
               <div>
@@ -506,11 +566,41 @@ export default function Page() {
 
 function resolveStepState(detail: RunDetail | null, step: string): string {
   if (!detail) return "idle";
-  if (String(detail.run.status) === "failed") return "failed";
-  const matched = detail.events.filter((event) => event.step === step);
-  if (matched.length > 0) return "done";
-  if (String(detail.run.status) === "running" || String(detail.run.status) === "queued") return "working";
+  const orderedSteps = ["research", "fit_scoring", "application_writer", "browser_executor"];
+  const completedSteps = new Set(
+    orderedSteps.filter((name) => hasStepCompletion(detail, name))
+  );
+  if (completedSteps.has(step)) return "done";
+
+  const activeStep = orderedSteps.find((name) => !completedSteps.has(name)) ?? null;
+  if (String(detail.run.status) === "failed") {
+    return activeStep === step ? "failed" : "idle";
+  }
+  if ((String(detail.run.status) === "running" || String(detail.run.status) === "queued") && activeStep === step) {
+    return "working";
+  }
   return "idle";
+}
+
+function hasStepCompletion(detail: RunDetail, step: string): boolean {
+  return detail.events.some((event) => event.step === step && event.event_type === "step");
+}
+
+function getStepCount(detail: RunDetail | null, step: string, fallback: number): number {
+  if (!detail || !hasStepCompletion(detail, step)) return 0;
+  const messages = detail.events
+    .filter((event) => event.step === step && event.event_type === "step")
+    .map((event) => String(event.payload.message ?? ""))
+    .reverse();
+
+  for (const message of messages) {
+    const matched = message.match(/(\d+)/);
+    if (matched) {
+      return Number(matched[1]);
+    }
+  }
+
+  return fallback;
 }
 
 function formatRunStatus(status: string): string {

@@ -305,6 +305,66 @@ h1 {
   line-height: 1.5;
 }
 
+.matches-window {
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  padding: 20px;
+  margin-bottom: 16px;
+  background: rgba(255, 255, 255, 0.56);
+}
+
+.matches-head {
+  margin-bottom: 16px;
+}
+
+.matches-window h3 {
+  margin: 8px 0 0;
+  font-size: 1.2rem;
+  line-height: 1.2;
+}
+
+.match-list {
+  display: grid;
+  gap: 12px;
+  max-height: 520px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.match-card {
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255,255,255,0.72);
+  padding: 16px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.match-card.active {
+  border-color: var(--accent);
+  background: #fff7f0;
+}
+
+.match-score-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.score.large {
+  font-size: 1.1rem;
+}
+
+.match-rationale {
+  margin: 8px 0 0;
+  color: var(--ink);
+  line-height: 1.55;
+}
+
 .review-window {
   border: 1px solid var(--line);
   border-radius: 22px;
