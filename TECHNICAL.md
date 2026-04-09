@@ -6,7 +6,7 @@ Deployment note: use the latest `main` commit for Railway services rather than r
 
 Current public URLs:
 
-- Frontend: `https://findyourjob-lusmh75vq-ericyaos-projects.vercel.app`
+- Frontend: `https://findyourjob-o0gmjnt2z-ericyaos-projects.vercel.app`
 - API: `https://findyourjob-production.up.railway.app`
 
 ## Architecture

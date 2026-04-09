@@ -3,7 +3,7 @@
 Find Your Job is a job-matching and application workflow product built to help candidates move from search to submission in one place.
 
 Public app:
-- https://findyourjob-lusmh75vq-ericyaos-projects.vercel.app
+- https://findyourjob-o0gmjnt2z-ericyaos-projects.vercel.app
 
 ## What It Does
 
